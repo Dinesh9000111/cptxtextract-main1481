@@ -309,24 +309,18 @@ try:
                             )
 
                             os.remove(text_file)
-                            os.remove(html_file)
-
-                        else:
-                            raise Exception('Did not found any content in course.')
-
+                        os.remove(html_file)
                     else:
-                        raise Exception('Failed to validate course selection.')
-
+                        raise Exception('Did not found any content in course.')
                 else:
-                    raise Exception('Did not found any course.')
-
+                    raise Exception('Failed to validate course selection.')
             else:
-                raise Exception('Failed to get courses.')
-            
+                raise Exception('Did not found any course.')
+        else:
+            raise Exception('Failed to get courses.')
 
-   
     except Exception as error:
-        LOGGER.error(f'Error: {error}')  # Log the error
+        LOGGER.error(f'Error: {error}')  # Error log करना
         await m.reply(
             (
                 '**'
@@ -335,4 +329,5 @@ try:
             ),
             quote=True
         )
+
 bot.run()
