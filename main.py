@@ -42,16 +42,14 @@ bot = Client(
 
 @bot.on_message(filters.command(["start"]))
 async def start(bot, update):
-       await update.reply_text("Hi i am **Classplus txt Downloader**.\n\n"
-                              "**NOW:-** "
-                                       
-                                       "Press **/classplus** to continue..\n\n")
+    await update.reply_text("Hi i am **Classplus txt Downloader**.\n\n"
+                             "**NOW:-** "
+                             "Press **/classplus** to continue..\n\n")
 
 @bot.on_message(filters.command(["classplus"]))
 async def account_login(bot: Client, m: Message):
 
     def get_course_content(session, course_id, folder_id=0):
-
         fetched_contents = []
 
         params = {
@@ -100,7 +98,7 @@ async def account_login(bot: Client, m: Message):
 
     api = 'https://api.classplusapp.com/v2'
 
-try:
+    try:
         reply = await m.reply(
             (
                 '**'
@@ -138,7 +136,7 @@ try:
                         'eventType' : 'login',
                         'otpHash'   : 'j7ej6eW5VO'
                     }
-        
+
                     res = session.post(f'{api}/otp/generate', data=json.dumps(data))
 
                     if res.status_code == 200:
@@ -151,8 +149,8 @@ try:
                                 '**'
                                 'Send OTP ?'
                                 '**'
-                            )
-                            ,reply_to_message_id = reply.id
+                            ),
+                            reply_to_message_id=reply.id
                         )
 
                         if reply.text.isdigit():
@@ -252,7 +250,7 @@ try:
                             f'{text}'
                             '**'
                         ),
-                        reply_to_message_id = reply.id
+                        reply_to_message_id=reply.id
                     )
 
                     if reply.text.isdigit() and len(reply.text) <= len(courses):
@@ -324,16 +322,15 @@ try:
                 raise Exception('Failed to get courses.')
             
 
-   
     except Exception as error:
-    LOGGER.error(f'Error: {error}')  # Log the error
-    await m.reply(
-        (
-            '**'
-            f'Error: {error}'
-            '**'
-        ),
-        quote=True
-    )
+        LOGGER.error(f'Error: {error}')  # Log the error
+        await m.reply(
+            (
+                '**'
+                f'Error: {error}'
+                '**'
+            ),
+            quote=True
+        )
 
 bot.run()
