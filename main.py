@@ -31,9 +31,9 @@ logging.basicConfig(
 
 bot = Client(
     "bot",
-    api_id=api_id,
-    api_hash=api_hash,
-    bot_token=bot_token
+    api_id= 24692763,
+    api_hash= "8e3840420e9d0895db3231d87c6d21a5",    
+    bot_token= "7601280525:AAGK3HTLou0IzpTG1I2GShX0baxei4NExpc"
 )
 
 api = 'https://api.classplusapp.com/v2'
