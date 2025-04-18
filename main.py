@@ -92,7 +92,11 @@ async def handle_credentials(bot: Client, message: Message):
             if org_code.isalpha() and phone_no.isdigit() and len(phone_no) == 10:
                 res = session.get(f'{api}/orgs/{org_code}')
                 res.raise_for_status()
-                org_id = res.json()['data']['orgId']
+                org_id = res.json().get('data', {}).get('orgId', None)
+
+                if org_id is None:
+                    await message.reply_text("**Error:** Invalid Organization Code or API response error.")
+                    return
 
                 data = {
                     'countryExt': '91',
@@ -105,7 +109,11 @@ async def handle_credentials(bot: Client, message: Message):
                 res = session.post(f'{api}/otp/generate', data=json.dumps(data))
                 res.raise_for_status()
 
-                session_id = res.json()['data']['sessionId']
+                session_id = res.json().get('data', {}).get('sessionId', None)
+
+                if session_id is None:
+                    await message.reply_text("**Error:** OTP generation failed.")
+                    return
 
                 await message.reply_text("Please send the OTP received:")
 
@@ -123,7 +131,12 @@ async def handle_credentials(bot: Client, message: Message):
                 res = session.post(f'{api}/users/verify', data=json.dumps(verify_data))
                 res.raise_for_status()
 
-                token = res.json()['data']['token']
+                token = res.json().get('data', {}).get('token', None)
+
+                if token is None:
+                    await message.reply_text("**Error:** OTP verification failed.")
+                    return
+
                 session.headers['x-access-token'] = token
                 logged_in = True
 
@@ -147,7 +160,16 @@ async def handle_credentials(bot: Client, message: Message):
 
         # If logged in successfully, fetch courses
         if logged_in:
-            user_id = res.json()['data']['responseData']['user']['id']
+            data = res.json().get('data', {})
+
+            if 'responseData' in data:
+                user_id = data['responseData']['user']['id']
+            else:
+                user_id = data.get('user', {}).get('id', None)
+
+            if user_id is None:
+                await message.reply_text("**Error:** User ID not found.")
+                return
 
             params = {
                 'userId': user_id,
@@ -156,7 +178,7 @@ async def handle_credentials(bot: Client, message: Message):
             res = session.get(f'{api}/profiles/users/data', params=params)
             res.raise_for_status()
 
-            courses = res.json()['data']['responseData']['coursesData']
+            courses = res.json().get('data', {}).get('responseData', {}).get('coursesData', [])
 
             if not courses:
                 await message.reply_text("No courses found.")
@@ -208,8 +230,9 @@ async def get_course_content(session, course_id, folder_id=0):
     fetched_contents = []
     params = {'courseId': course_id, 'folderId': folder_id}
     res = session.get(f'{api}/course/content/get', params=params)
+
     if res.status_code == 200:
-        contents = res.json()['data']['courseContent']
+        contents = res.json().get('data', {}).get('courseContent', [])
         for content in contents:
             if content['contentType'] == 1:
                 if content.get('resources', {}).get('videos') or content.get('resources', {}).get('files'):
