@@ -43,13 +43,13 @@ bot = Client(
 @bot.on_message(filters.command(["start"]))
 async def start(bot, update):
     await update.reply_text("Hi i am **Classplus txt Downloader**.\n\n"
-                             "**NOW:-** "
-                             "Press **/classplus** to continue..\n\n")
+                            "**NOW:-** Press **/classplus** to continue..\n\n")
 
 @bot.on_message(filters.command(["classplus"]))
 async def account_login(bot: Client, m: Message):
 
     def get_course_content(session, course_id, folder_id=0):
+
         fetched_contents = []
 
         params = {
@@ -118,7 +118,13 @@ async def account_login(bot: Client, m: Message):
         logged_in = False
 
         if '\n' in creds:
-            org_code, phone_no = [cred.strip() for cred in creds.split('\n')]
+            creds_list = [cred.strip() for cred in creds.split('\n')]
+
+            # Validate if exactly two values are provided (Org Code and Phone Number)
+            if len(creds_list) != 2:
+                raise Exception('Invalid input. Please send exactly two values: Organisation Code and Phone Number.')
+
+            org_code, phone_no = creds_list
 
             if org_code.isalpha() and phone_no.isdigit() and len(phone_no) == 10:
                 res = session.get(f'{api}/orgs/{org_code}')
@@ -144,7 +150,7 @@ async def account_login(bot: Client, m: Message):
 
                         session_id = res['data']['sessionId']
 
-                        reply = await message.chat.ask(
+                        reply = await m.reply(
                             (
                                 '**'
                                 'Send OTP ?'
@@ -191,7 +197,7 @@ async def account_login(bot: Client, m: Message):
 
                             else:
                                 raise Exception('Failed to verify OTP.')
-                            
+                        
                         else:
                             raise Exception('Failed to validate OTP.')
                         
@@ -205,10 +211,8 @@ async def account_login(bot: Client, m: Message):
                 raise Exception('Failed to validate credentials.')
 
         else:
-
             token = creds.strip()
             session.headers['x-access-token'] = token
-
 
             res = session.get(f'{api}/users/details')
 
@@ -220,7 +224,6 @@ async def account_login(bot: Client, m: Message):
             
             else:
                 raise Exception('Failed to get user details.')
-
 
         if logged_in:
 
@@ -243,7 +246,7 @@ async def account_login(bot: Client, m: Message):
                         name = course['name']
                         text += f'{cnt + 1}. {name}\n'
 
-                    reply = await message.chat.ask(
+                    reply = await m.reply(
                         (
                             '**'
                             'Send index number of the course to download.\n\n'
@@ -287,8 +290,8 @@ async def account_login(bot: Client, m: Message):
                             text_file = f'assets/{get_datetime_str()}.txt'
                             open(text_file, 'w').writelines(course_content)
 
-                            await client.send_document(
-                                message.chat.id,
+                            await bot.send_document(
+                                m.chat.id,
                                 text_file,
                                 caption=caption,
                                 file_name=f"{selected_course_name}.txt",
@@ -298,8 +301,8 @@ async def account_login(bot: Client, m: Message):
                             html_file = f'assets/{get_datetime_str()}.html'
                             create_html_file(html_file, selected_course_name, course_content)
 
-                            await client.send_document(
-                                message.chat.id,
+                            await bot.send_document(
+                                m.chat.id,
                                 html_file,
                                 caption=caption,
                                 file_name=f"{selected_course_name}.html",
@@ -310,17 +313,16 @@ async def account_login(bot: Client, m: Message):
                             os.remove(html_file)
 
                         else:
-                            raise Exception('Did not found any content in course.')
+                            raise Exception('Did not find any content in course.')
 
                     else:
                         raise Exception('Failed to validate course selection.')
 
                 else:
-                    raise Exception('Did not found any course.')
+                    raise Exception('Did not find any course.')
 
             else:
                 raise Exception('Failed to get courses.')
-            
 
     except Exception as error:
         LOGGER.error(f'Error: {error}')  # Log the error
