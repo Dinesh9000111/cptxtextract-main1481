@@ -5,10 +5,9 @@ import aiohttp
 import re
 import os
 from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery
-from pyrogram.errors import ListenerTimeout
+from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.errors import TimeoutError  # Replace ListenerTimeout with TimeoutError
 from concurrent.futures import ThreadPoolExecutor
-from pyrogram import Client
 
 # Replace these with your own values
 api_id = '24692763'  # Generated from https://my.telegram.org/auth
@@ -18,11 +17,18 @@ bot_token = '8073469304:AAFS0nwpbKhAfsPaS87v_9j5AHA_lVlIqmo'  # Generated from @
 # Pyrogram client with bot token
 app = Client("my_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
-@app.on_message()
-def handle_message(client, message):
-    client.send_message(message.chat.id, "Hello, I am your bot!")
+@app.on_message(filters.command("start"))
+async def start_handler(bot: Client, message: Message):
+    user_id = message.from_user.id
+    await message.reply(
+        "Welcome! Please choose an option:\n\n"
+        "/start to start your process or\n"
+        "Click the button below",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Start Process", callback_data="button_command")]
+        ])
+    )
 
-app.run()
 
 # Function to handle both commands and button clicks
 async def handle_query(bot: Client, query: CallbackQuery):
@@ -63,7 +69,7 @@ async def process_cpwp(bot: Client, m: Message, user_id: int):
                 input1 = await bot.listen(chat_id=m.chat.id, filters=filters.user(user_id), timeout=120)
                 org_code = input1.text.lower()
                 await input1.delete(True)
-            except ListenerTimeout:
+            except TimeoutError:
                 await editable.edit("**Timeout! You took too long to respond**")
                 return
             except Exception as e:
@@ -74,6 +80,7 @@ async def process_cpwp(bot: Client, m: Message, user_id: int):
                     logging.error(f"Failed to send error message to user: {e}")
                 return
 
+            # Fetch and process course details
             hash_headers = {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -115,7 +122,7 @@ async def process_cpwp(bot: Client, m: Message, user_id: int):
                                     input2 = await bot.listen(chat_id=m.chat.id, filters=filters.user(user_id), timeout=120)
                                     raw_text2 = input2.text
                                     await input2.delete(True)
-                                except ListenerTimeout:
+                                except TimeoutError:
                                     await editable.edit("**Timeout! You took too long to respond**")
                                     return
                                 except Exception as e:
@@ -154,7 +161,7 @@ async def process_cpwp(bot: Client, m: Message, user_id: int):
                                                     input3 = await bot.listen(chat_id=m.chat.id, filters=filters.user(user_id), timeout=120)
                                                     raw_text3 = input3.text
                                                     await input3.delete(True)
-                                                except ListenerTimeout:
+                                                except TimeoutError:
                                                     await editable.edit("**Timeout! You took too long to respond**")
                                                     return
                                                 except Exception as e:
@@ -177,100 +184,4 @@ async def process_cpwp(bot: Client, m: Message, user_id: int):
                                                 else:
                                                     raise Exception("Wrong Index Number")
                                             else:
-                                                raise Exception("Didn't Find Any Course Matching The Search Term")
-                                        else:
-                                            raise Exception(f"{response.text}")
-
-                                download_price = int(price * 0.10)
-                                batch_headers = {
-                                    'Accept': 'application/json, text/plain, */*',
-                                    'region': 'IN',
-                                    'accept-language': 'EN',
-                                    'Api-Version': '22',
-                                    'tutorWebsiteDomain': f'https://{org_code}.courses.store'
-                                }
-
-                                params = {
-                                    'courseId': f'{selected_batch_id}',
-                                }
-
-                                async with session.get(f"https://api.classplusapp.com/v2/course/preview/org/info", params=params, headers=batch_headers) as response:
-                                    if response.status == 200:
-                                        res_json = await response.json()
-                                        Batch_Token = res_json['data']['hash']
-                                        App_Name = res_json['data']['name']
-
-                                        await editable.edit(f"**Extracting course : {selected_batch_name} ...**")
-
-                                        start_time = time.time()
-                                        course_content, video_count, pdf_count, image_count = await get_cpwp_course_content(session, headers, Batch_Token)
-
-                                        if course_content:
-                                            file = f"{clean_file_name}.txt"
-
-                                            with open(file, 'w') as f:
-                                                f.write(''.join(course_content))
-
-                                            end_time = time.time()
-                                            response_time = end_time - start_time
-                                            minutes = int(response_time // 60)
-                                            seconds = int(response_time % 60)
-
-                                            if minutes == 0:
-                                                if seconds < 1:
-                                                    formatted_time = f"{response_time:.2f} seconds"
-                                                else:
-                                                    formatted_time = f"{seconds} seconds"
-                                            else:
-                                                formatted_time = f"{minutes} minutes {seconds} seconds"
-
-                                            await editable.delete(True)
-
-                                            caption = f"**App Name : ```\n{App_Name}({org_code})```\nBatch Name : ```\n{selected_batch_name}``````\n🎬 : {video_count} | 📁 : {pdf_count} | 🖼  : {image_count}``````\nTime Taken : {formatted_time}```**"
-
-                                            with open(file, 'rb') as f:
-                                                doc = await m.reply_document(document=f, caption=caption, file_name=f"{clean_batch_name}.txt")
-
-                                            os.remove(file)
-
-                                        else:
-                                            raise Exception("Didn't Find Any Content In The Course")
-                                    else:
-                                        raise Exception(f"{response.text}")
-                            else:
-                                raise Exception("Didn't Find Any Course")
-                        else:
-                            raise Exception(f"{response.text}")
-                else:
-                    raise Exception('No App Found In Org Code')
-
-        except Exception as e:
-            await editable.edit(f"**Error : {e}**")
-
-        finally:
-            await session.close()
-            await CONNECTOR.close()
-
-
-# Button handler function
-@app.on_callback_query(filters.regex("button_command"))
-async def button_handler(bot: Client, query: CallbackQuery):
-    user_id = query.from_user.id
-    await handle_query(bot, query)
-
-
-# Command handler function
-@app.on_message(filters.command("start"))
-async def start_handler(bot: Client, message: Message):
-    user_id = message.from_user.id
-    await message.reply(
-        "Welcome! Please choose an option:\n\n"
-        "/start to start your process or\n"
-        "Click the button below",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Start Process", callback_data="button_command")]
-        ])
-    )
-
-# Run the bot
-bot.run()
+                                                raise Exception("Didn't Find Any
