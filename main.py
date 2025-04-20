@@ -1,224 +1,276 @@
-import requests
-import json
-import subprocess
-from pyrogram.types import Message
-import helper
-from pyromod import listen
-import pyrogram
-from pyrogram import Client, filters, idle
-from details import api_id, api_hash, bot_token, auth_users, sudo_user, log_channel, txt_channel
-from subprocess import getstatusoutput
-from utils import get_datetime_str, create_html_file
-import asyncio, logging
-from logging.handlers import RotatingFileHandler
-import tgcrypto
-import os
-import sys
+import asyncio
+import logging
+import time
+import aiohttp
 import re
+import os
+from pyrogram import Client, filters
+from pyrogram.types import Message, CallbackQuery
+from pyrogram.errors import ListenerTimeout
+from concurrent.futures import ThreadPoolExecutor
+from pyrogram import Client
 
-LOGGER = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(name)s - %(message)s",
-    datefmt="%d-%b-%y %H:%M:%S",
-    handlers=[
-        RotatingFileHandler(
-            "log.txt", maxBytes=5000000, backupCount=10
-        ),
-        logging.StreamHandler(),
-    ],
-)
+# Replace these with your own values
+api_id = 'YOUR_API_ID'  # Generated from https://my.telegram.org/auth
+api_hash = 'YOUR_API_HASH'  # Generated from https://my.telegram.org/auth
+bot_token = 'YOUR_BOT_TOKEN'  # Generated from @BotFather
 
-bot = Client(
-    "bot",
-    api_id= 24692763,
-    api_hash= "8e3840420e9d0895db3231d87c6d21a5",    
-    bot_token= "7601280525:AAGK3HTLou0IzpTG1I2GShX0baxei4NExpc"
-)
+# Pyrogram client with bot token
+app = Client("my_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
-api = 'https://api.classplusapp.com/v2'
+@app.on_message()
+def handle_message(client, message):
+    client.send_message(message.chat.id, "Hello, I am your bot!")
 
-headers = {
-    'accept-encoding': 'gzip',
-    'accept-language': 'EN',
-    'api-version'    : '35',
-    'app-version'    : '1.4.73.2',
-    'build-number'   : '35',
-    'connection'     : 'Keep-Alive',
-    'content-type'   : 'application/json',
-    'device-details' : 'Xiaomi_Redmi 7_SDK-32',
-    'device-id'      : 'c28d3cb16bbdac01',
-    'host'           : 'api.classplusapp.com',
-    'region'         : 'IN',
-    'user-agent'     : 'Mobile-Android',
-    'webengage-luid' : '00000187-6fe4-5d41-a530-26186858be4c'
-}
+app.run()
 
-# Step 1: /start command
-@bot.on_message(filters.command(["start"]))
-async def start(bot, message):
-    await message.reply_text(
-        "Hi, I am **Classplus txt Downloader**.\n\n"
-        "**NOW:**\nPress **/classplus** to continue.."
-    )
+# Function to handle both commands and button clicks
+async def handle_query(bot: Client, query: CallbackQuery):
+    user_id = query.from_user.id
+    await query.answer()
 
-# Step 2: /classplus command -> just instruction
-@bot.on_message(filters.command(["classplus"]))
-async def classplus(bot, message):
-    await message.reply_text(
-        "**Send your credentials as shown below:**\n\n"
-        "`Organisation Code`\n"
-        "`Phone Number`\n\n"
-        "**OR**\n\n"
-        "`Access Token`"
-    )
+    if query.data == "button_command":
+        await process_cpwp(bot, query.message, user_id)
+    else:
+        await query.message.reply("Invalid command!")
 
-# Step 3: Credentials handle
-@bot.on_message(filters.text & ~filters.command(["start", "classplus"]))
-async def handle_credentials(bot: Client, message: Message):
-    try:
-        session = requests.Session()
-        session.headers.update(headers)
 
-        text = message.text.strip()
-        lines = text.split('\n')
+# Function to process the course search and download
+async def process_cpwp(bot: Client, m: Message, user_id: int):
+    headers = {
+        'accept-encoding': 'gzip',
+        'accept-language': 'EN',
+        'api-version': '35',
+        'app-version': '1.4.73.2',
+        'build-number': '35',
+        'connection': 'Keep-Alive',
+        'content-type': 'application/json',
+        'device-details': 'Xiaomi_Redmi 7_SDK-32',
+        'device-id': 'c28d3cb16bbdac01',
+        'host': 'api.classplusapp.com',
+        'region': 'IN',
+        'user-agent': 'Mobile-Android',
+        'webengage-luid': '00000187-6fe4-5d41-a530-26186858be4c'
+    }
 
-        logged_in = False
+    loop = asyncio.get_event_loop()
+    CONNECTOR = aiohttp.TCPConnector(limit=1000, loop=loop)
+    async with aiohttp.ClientSession(connector=CONNECTOR, loop=loop) as session:
+        try:
+            editable = await m.reply_text("**Enter ORG Code Of Your Classplus App**")
 
-        if len(lines) == 2:
-            org_code = lines[0].strip()
-            phone_no = lines[1].strip()
+            try:
+                input1 = await bot.listen(chat_id=m.chat.id, filters=filters.user(user_id), timeout=120)
+                org_code = input1.text.lower()
+                await input1.delete(True)
+            except ListenerTimeout:
+                await editable.edit("**Timeout! You took too long to respond**")
+                return
+            except Exception as e:
+                logging.exception("Error during input1 listening:")
+                try:
+                    await editable.edit(f"**Error: {e}**")
+                except:
+                    logging.error(f"Failed to send error message to user: {e}")
+                return
 
-            if org_code.isalpha() and phone_no.isdigit() and len(phone_no) == 10:
-                res = session.get(f'{api}/orgs/{org_code}')
-                res.raise_for_status()
-                org_id = res.json()['data']['orgId']
-
-                data = {
-                    'countryExt': '91',
-                    'mobile': phone_no,
-                    'viaSms': 1,
-                    'orgId': int(org_id),
-                    'eventType': 'login',
-                    'otpHash': 'j7ej6eW5VO'
-                }
-                res = session.post(f'{api}/otp/generate', data=json.dumps(data))
-                res.raise_for_status()
-
-                session_id = res.json()['data']['sessionId']
-
-                await message.reply_text("Please send the OTP received:")
-
-                otp_msg = await bot.listen(message.chat.id)
-                otp = otp_msg.text.strip()
-
-                verify_data = {
-                    'otp': otp,
-                    'sessionId': session_id,
-                    'orgId': int(org_id),
-                    'fingerprintId': 'a3ee05fbde3958184f682839be4fd0f7',
-                    'countryExt': '91',
-                    'mobile': phone_no,
-                }
-                res = session.post(f'{api}/users/verify', data=json.dumps(verify_data))
-                res.raise_for_status()
-
-                token = res.json()['data']['token']
-                session.headers['x-access-token'] = token
-                logged_in = True
-
-                await message.reply_text(f"**Your Access Token:**\n`{token}`")
-
-            else:
-                await message.reply_text("**Invalid Organisation Code or Phone Number.**")
-
-        elif len(lines) == 1:
-            token = lines[0]
-            session.headers['x-access-token'] = token
-
-            res = session.get(f'{api}/users/details')
-            res.raise_for_status()
-
-            logged_in = True
-
-        else:
-            await message.reply_text("**Invalid input. Please send Organisation Code and Phone Number OR Access Token.**")
-            return
-
-        # If logged in successfully, fetch courses
-        if logged_in:
-            user_id = res.json()['data']['responseData']['user']['id']
-
-            params = {
-                'userId': user_id,
-                'tabCategoryId': 3
+            hash_headers = {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br, zstd',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://qsvfn.courses.store/?mainCategory=0&subCatList=[130504,62442]',
+                'Sec-CH-UA': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+                'Sec-CH-UA-Mobile': '?0',
+                'Sec-CH-UA-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
             }
-            res = session.get(f'{api}/profiles/users/data', params=params)
-            res.raise_for_status()
 
-            courses = res.json()['data']['responseData']['coursesData']
+            async with session.get(f"https://{org_code}.courses.store", headers=hash_headers) as response:
+                html_text = await response.text()
+                hash_match = re.search(r'"hash":"(.*?)"', html_text)
 
-            if not courses:
-                await message.reply_text("No courses found.")
-                return
+                if hash_match:
+                    token = hash_match.group(1)
 
-            course_list = ""
-            for idx, course in enumerate(courses, 1):
-                course_list += f"{idx}. {course['name']}\n"
+                    async with session.get(f"https://api.classplusapp.com/v2/course/preview/similar/{token}?limit=20", headers=headers) as response:
+                        if response.status == 200:
+                            res_json = await response.json()
+                            courses = res_json.get('data', {}).get('coursesData', [])
 
-            await message.reply_text(
-                "**Send the index number of course to download:**\n\n" + course_list
-            )
+                            if courses:
+                                text = ''
+                                for cnt, course in enumerate(courses):
+                                    name = course['name']
+                                    price = course['finalPrice']
+                                    text += f'{cnt + 1}. ```\n{name} 💵₹{price}```\n'
 
-            selected = await bot.listen(message.chat.id)
-            index = int(selected.text.strip())
+                                await editable.edit(f"**Send index number of the Category Name\n\n{text}\nIf Your Batch Not Listed Then Enter Your Batch Name**")
 
-            selected_course = courses[index - 1]
-            course_id = selected_course['id']
-            course_name = selected_course['name']
+                                try:
+                                    input2 = await bot.listen(chat_id=m.chat.id, filters=filters.user(user_id), timeout=120)
+                                    raw_text2 = input2.text
+                                    await input2.delete(True)
+                                except ListenerTimeout:
+                                    await editable.edit("**Timeout! You took too long to respond**")
+                                    return
+                                except Exception as e:
+                                    logging.exception("Error during input1 listening:")
+                                    try:
+                                        await editable.edit(f"**Error : {e}**")
+                                    except:
+                                        logging.error(f"Failed to send error message to user : {e}")
+                                    return
 
-            # Now get all course content
-            content = await get_course_content(session, course_id)
+                                if input2.text.isdigit() and len(input2.text) <= len(courses):
+                                    selected_course_index = int(input2.text.strip())
+                                    course = courses[selected_course_index - 1]
+                                    selected_batch_id = course['id']
+                                    selected_batch_name = course['name']
+                                    price = course['finalPrice']
+                                    clean_batch_name = selected_batch_name.replace("/", "-").replace("|", "-")
+                                    clean_file_name = f"{user_id}_{clean_batch_name}"
 
-            if not content:
-                await message.reply_text("No content found in the course.")
-                return
+                                else:
+                                    search_url = f"https://api.classplusapp.com/v2/course/preview/similar/{token}?search={raw_text2}"
+                                    async with session.get(search_url, headers=headers) as response:
+                                        if response.status == 200:
+                                            res_json = await response.json()
+                                            courses = res_json.get("data", {}).get("coursesData", [])
 
-            caption = f"**App Name:** Classplus\n**Batch Name:** {course_name}"
+                                            if courses:
+                                                text = ''
+                                                for cnt, course in enumerate(courses):
+                                                    name = course['name']
+                                                    price = course['finalPrice']
+                                                    text += f'{cnt + 1}. ```\n{name} 💵₹{price}```\n'
+                                                await editable.edit(f"**Send index number of the Batch to download.\n\n{text}**")
 
-            txt_file = f'assets/{get_datetime_str()}.txt'
-            with open(txt_file, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(content))
+                                                try:
+                                                    input3 = await bot.listen(chat_id=m.chat.id, filters=filters.user(user_id), timeout=120)
+                                                    raw_text3 = input3.text
+                                                    await input3.delete(True)
+                                                except ListenerTimeout:
+                                                    await editable.edit("**Timeout! You took too long to respond**")
+                                                    return
+                                                except Exception as e:
+                                                    logging.exception("Error during input1 listening:")
+                                                    try:
+                                                        await editable.edit(f"**Error : {e}**")
+                                                    except:
+                                                        logging.error(f"Failed to send error message to user : {e}")
+                                                    return
 
-            await bot.send_document(
-                message.chat.id,
-                txt_file,
-                caption=caption,
-                file_name=f"{course_name}.txt",
-                reply_to_message_id=message.id
-            )
+                                                if input3.text.isdigit() and len(input3.text) <= len(courses):
+                                                    selected_course_index = int(input3.text.strip())
+                                                    course = courses[selected_course_index - 1]
+                                                    selected_batch_id = course['id']
+                                                    selected_batch_name = course['name']
+                                                    price = course['finalPrice']
+                                                    clean_batch_name = selected_batch_name.replace("/", "-").replace("|", "-")
+                                                    clean_file_name = f"{user_id}_{clean_batch_name}"
 
-            os.remove(txt_file)
+                                                else:
+                                                    raise Exception("Wrong Index Number")
+                                            else:
+                                                raise Exception("Didn't Find Any Course Matching The Search Term")
+                                        else:
+                                            raise Exception(f"{response.text}")
 
-    except Exception as e:
-        LOGGER.error(f"Error: {e}")
-        await message.reply_text(f"**Error:** {e}")
+                                download_price = int(price * 0.10)
+                                batch_headers = {
+                                    'Accept': 'application/json, text/plain, */*',
+                                    'region': 'IN',
+                                    'accept-language': 'EN',
+                                    'Api-Version': '22',
+                                    'tutorWebsiteDomain': f'https://{org_code}.courses.store'
+                                }
 
-async def get_course_content(session, course_id, folder_id=0):
-    fetched_contents = []
-    params = {'courseId': course_id, 'folderId': folder_id}
-    res = session.get(f'{api}/course/content/get', params=params)
-    if res.status_code == 200:
-        contents = res.json()['data']['courseContent']
-        for content in contents:
-            if content['contentType'] == 1:
-                if content.get('resources', {}).get('videos') or content.get('resources', {}).get('files'):
-                    sub_contents = await get_course_content(session, course_id, content['id'])
-                    fetched_contents += sub_contents
-            else:
-                name = content['name']
-                url = content['url']
-                fetched_contents.append(f'{name}: {url}')
-    return fetched_contents
+                                params = {
+                                    'courseId': f'{selected_batch_id}',
+                                }
 
+                                async with session.get(f"https://api.classplusapp.com/v2/course/preview/org/info", params=params, headers=batch_headers) as response:
+                                    if response.status == 200:
+                                        res_json = await response.json()
+                                        Batch_Token = res_json['data']['hash']
+                                        App_Name = res_json['data']['name']
+
+                                        await editable.edit(f"**Extracting course : {selected_batch_name} ...**")
+
+                                        start_time = time.time()
+                                        course_content, video_count, pdf_count, image_count = await get_cpwp_course_content(session, headers, Batch_Token)
+
+                                        if course_content:
+                                            file = f"{clean_file_name}.txt"
+
+                                            with open(file, 'w') as f:
+                                                f.write(''.join(course_content))
+
+                                            end_time = time.time()
+                                            response_time = end_time - start_time
+                                            minutes = int(response_time // 60)
+                                            seconds = int(response_time % 60)
+
+                                            if minutes == 0:
+                                                if seconds < 1:
+                                                    formatted_time = f"{response_time:.2f} seconds"
+                                                else:
+                                                    formatted_time = f"{seconds} seconds"
+                                            else:
+                                                formatted_time = f"{minutes} minutes {seconds} seconds"
+
+                                            await editable.delete(True)
+
+                                            caption = f"**App Name : ```\n{App_Name}({org_code})```\nBatch Name : ```\n{selected_batch_name}``````\n🎬 : {video_count} | 📁 : {pdf_count} | 🖼  : {image_count}``````\nTime Taken : {formatted_time}```**"
+
+                                            with open(file, 'rb') as f:
+                                                doc = await m.reply_document(document=f, caption=caption, file_name=f"{clean_batch_name}.txt")
+
+                                            os.remove(file)
+
+                                        else:
+                                            raise Exception("Didn't Find Any Content In The Course")
+                                    else:
+                                        raise Exception(f"{response.text}")
+                            else:
+                                raise Exception("Didn't Find Any Course")
+                        else:
+                            raise Exception(f"{response.text}")
+                else:
+                    raise Exception('No App Found In Org Code')
+
+        except Exception as e:
+            await editable.edit(f"**Error : {e}**")
+
+        finally:
+            await session.close()
+            await CONNECTOR.close()
+
+
+# Button handler function
+@app.on_callback_query(filters.regex("button_command"))
+async def button_handler(bot: Client, query: CallbackQuery):
+    user_id = query.from_user.id
+    await handle_query(bot, query)
+
+
+# Command handler function
+@app.on_message(filters.command("start"))
+async def start_handler(bot: Client, message: Message):
+    user_id = message.from_user.id
+    await message.reply(
+        "Welcome! Please choose an option:\n\n"
+        "/start to start your process or\n"
+        "Click the button below",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Start Process", callback_data="button_command")]
+        ])
+    )
+
+# Run the bot
 bot.run()
