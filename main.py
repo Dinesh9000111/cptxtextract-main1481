@@ -184,4 +184,11 @@ async def process_cpwp(bot: Client, m: Message, user_id: int):
                                                 else:
                                                     raise Exception("Wrong Index Number")
                                             else:
-                                                raise Exception('Didn\'t Find Any Course')
+                                                try:
+    # Your code here
+    
+    raise Exception("Didn't Find Any Course")
+    
+except Exception as e:
+    # Handle the exception here
+    print(f"Error: {e}")
