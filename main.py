@@ -11,9 +11,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pyrogram import Client
 
 # Replace these with your own values
-api_id = 'YOUR_API_ID'  # Generated from https://my.telegram.org/auth
-api_hash = 'YOUR_API_HASH'  # Generated from https://my.telegram.org/auth
-bot_token = 'YOUR_BOT_TOKEN'  # Generated from @BotFather
+api_id = '24692763'  # Generated from https://my.telegram.org/auth
+api_hash = '8e3840420e9d0895db3231d87c6d21a5'  # Generated from https://my.telegram.org/auth
+bot_token = '8073469304:AAFS0nwpbKhAfsPaS87v_9j5AHA_lVlIqmo'  # Generated from @BotFather
 
 # Pyrogram client with bot token
 app = Client("my_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
